@@ -9,6 +9,8 @@ nltk.download('punkt_tab', quiet=True)
 
 from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
+from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
+from sklearn.model_selection import train_test_split
 
 
 # ─────────────────────────────────────────
@@ -106,6 +108,59 @@ def load_email():
 
 
 # ─────────────────────────────────────────
+# SPAM-22: Train/Test split + TF-IDF
+# ─────────────────────────────────────────
+
+def extract_features(df, vectorizer_type='tfidf', max_features=5000):
+    """
+    Split dataset and extract features using TF-IDF or CountVectorizer.
+
+    IMPORTANT: Fit vectorizer on TRAIN set only to avoid data leakage.
+
+    Args:
+        df              : cleaned SMS dataframe from load_and_clean_sms()
+        vectorizer_type : 'tfidf' or 'count'
+        max_features    : maximum vocabulary size
+
+    Returns:
+        X_train_vec, X_test_vec, y_train, y_test, vectorizer
+    """
+
+    X = df['clean_message']
+    y = df['label_num']
+
+    # Step 1: Train/Test split FIRST (80/20)
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y,
+        test_size=0.2,
+        random_state=42,
+        stratify=y        # keeps spam/ham ratio same in both splits
+    )
+
+    print(f"Train size : {len(X_train)} messages")
+    print(f"Test size  : {len(X_test)} messages")
+    print(f"Train spam : {y_train.sum()} ({y_train.mean()*100:.1f}%)")
+    print(f"Test spam  : {y_test.sum()} ({y_test.mean()*100:.1f}%)")
+
+    # Step 2: Choose vectorizer
+    if vectorizer_type == 'tfidf':
+        vectorizer = TfidfVectorizer(max_features=max_features)
+        print(f"\nVectorizer : TF-IDF (max_features={max_features})")
+    else:
+        vectorizer = CountVectorizer(max_features=max_features)
+        print(f"\nVectorizer : CountVectorizer (max_features={max_features})")
+
+    # Step 3: Fit on TRAIN only, transform both
+    X_train_vec = vectorizer.fit_transform(X_train)   # learn + convert
+    X_test_vec  = vectorizer.transform(X_test)         # only convert
+
+    print(f"Train matrix shape : {X_train_vec.shape}")
+    print(f"Test matrix shape  : {X_test_vec.shape}")
+
+    return X_train_vec, X_test_vec, y_train, y_test, vectorizer
+
+
+# ─────────────────────────────────────────
 # SPAM-21: Apply to full dataset & verify
 # ─────────────────────────────────────────
 
@@ -146,10 +201,34 @@ if __name__ == "__main__":
         print(f"  - {msg}")
 
     print("\nVERIFICATION CHECKS:")
-    print(f"  Total rows processed    : {len(sms_df)}")
+    print(f"  Total rows processed     : {len(sms_df)}")
     print(f"  Empty messages after clean: {sms_df['clean_message'].str.strip().eq('').sum()}")
-    print(f"  Null values after clean : {sms_df['clean_message'].isnull().sum()}")
+    print(f"  Null values after clean  : {sms_df['clean_message'].isnull().sum()}")
+
+    # SPAM-22: Feature Extraction
+    print("\n")
+    print("=" * 55)
+    print("SPAM-22: FEATURE EXTRACTION")
+    print("=" * 55)
+
+    print("\nTF-IDF Vectorizer:")
+    print("-" * 55)
+    X_train_tfidf, X_test_tfidf, y_train, y_test, tfidf_vec = extract_features(
+        sms_df, vectorizer_type='tfidf'
+    )
+
+    print("\nCountVectorizer:")
+    print("-" * 55)
+    X_train_count, X_test_count, y_train, y_test, count_vec = extract_features(
+        sms_df, vectorizer_type='count'
+    )
+
+    print("\nTop 10 TF-IDF vocabulary:")
+    print(tfidf_vec.get_feature_names_out()[:10])
+
+    print("\nTop 10 Count vocabulary:")
+    print(count_vec.get_feature_names_out()[:10])
 
     email_df = load_email()
 
-    print("\nBoth datasets loaded and ready.")
+    print("\nFeature extraction complete.")
